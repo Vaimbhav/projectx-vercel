@@ -5,46 +5,68 @@ import { PageIntro, StubPage } from "@/components/ui";
 import CurvePlot from "@/components/CurvePlot";
 
 type PriceEntry = {
-  month?: string;
-  anchorMonth?: string;
-  name?: string;
-  price?: number;
-  outright?: number;
+  key: string;
+  last: number;
+  change: number | null;
+  settle: number | null;
 };
 
 export default function WatchlistPage() {
   const [prices, setPrices] = useState<PriceEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const fetchPrices = async () => {
+    try {
+      const res = await fetch("/api/prices");
+      const data = await res.json();
+      let entries: PriceEntry[] = [];
+
+      if (Array.isArray(data)) {
+        entries = data.map((item: any, i: number) => ({
+          key: item.key ?? `row-${i}`,
+          last: Number(item.last ?? item.price ?? item.outright ?? 0),
+          change: item.change ?? null,
+          settle: item.settle ?? null,
+        }));
+      } else if (data && typeof data === "object") {
+        entries = Object.entries(data).map(([key, value]) => {
+          if (typeof value === "number") {
+            return { key, last: value, change: null, settle: null };
+          }
+          const record = value as Record<string, unknown>;
+          return {
+            key,
+            last: Number(record.last ?? record.price ?? record.outright ?? 0),
+            change: typeof record.change === "number" ? record.change : null,
+            settle: typeof record.settle === "number" ? record.settle : null,
+          };
+        });
+      }
+
+      setPrices(entries || []);
+      setError(null);
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
-    fetch("/api/prices")
-      .then((res) => res.json())
-      .then((data) => {
-        if (!mounted) return;
-        let entries: PriceEntry[] = [];
-        if (Array.isArray(data)) entries = data;
-        else if (Array.isArray(data?.prices)) entries = data.prices;
-        else if (data && typeof data === "object") {
-          // try to coerce object shapes into an array
-          const vals = Object.values(data).flat();
-          entries = Array.isArray(vals) ? (vals as PriceEntry[]) : [];
-        }
-        setPrices(entries || []);
-      })
-      .catch((err) => {
-        if (!mounted) return;
-        setError(String(err));
-      });
+    fetchPrices();
+    const interval = setInterval(() => {
+      if (!mounted) return;
+      fetchPrices();
+    }, 3000);
     return () => {
       mounted = false;
+      clearInterval(interval);
     };
   }, []);
 
   const points = (prices || [])
-    .map((p, i) => ({
-      label: p.anchorMonth ?? p.month ?? p.name ?? `row-${i}`,
-      price: Number(p.price ?? p.outright ?? (p as any).value ?? 0),
+    .map((p) => ({
+      label: p.key,
+      price: p.last,
     }))
     .filter((x) => Number.isFinite(x.price));
 
@@ -88,14 +110,11 @@ export default function WatchlistPage() {
                     <td colSpan={2} style={{ padding: 8 }}>No price data available</td>
                   </tr>
                 )}
-                {prices && prices.map((p, i) => {
-                  const label = p.anchorMonth ?? p.month ?? p.name ?? `row-${i}`;
-                  const priceVal = p.price ?? p.outright ?? (p as any).value ?? null;
-                  const priceText =
-                    priceVal === null || priceVal === undefined ? "—" : Number(priceVal).toFixed(2);
+                {prices && prices.map((p) => {
+                  const priceText = Number.isFinite(p.last) ? p.last.toFixed(2) : "—";
                   return (
-                    <tr key={i}>
-                      <td style={{ padding: 8, borderBottom: "1px solid #f3f4f6" }}>{label}</td>
+                    <tr key={p.key}>
+                      <td style={{ padding: 8, borderBottom: "1px solid #f3f4f6" }}>{p.key}</td>
                       <td style={{ padding: 8, textAlign: "right", borderBottom: "1px solid #f3f4f6" }}>{priceText}</td>
                     </tr>
                   );

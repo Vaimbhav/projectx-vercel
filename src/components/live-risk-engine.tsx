@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getAllStrategies, type TaxonomyStrategy } from "@/lib/taxonomy";
-import { getLivePriceForTrade, normalizePriceKey } from "@/lib/pricing";
+import { getLivePriceForTrade, normalizePriceKey, type PriceRecord } from "@/lib/pricing";
 import PositionMonitor from "@/components/position-monitor";
 
 interface Trade {
@@ -20,7 +20,7 @@ interface Trade {
 }
 
 export default function LiveRiskEngine({ trades }: { trades: Trade[] }) {
-    const [prices, setPrices] = useState<Record<string, number>>({});
+    const [prices, setPrices] = useState<Record<string, number | PriceRecord>>({});
     const [strategies, setStrategies] = useState<TaxonomyStrategy[]>([]);
 
     // Filter open trades
@@ -47,7 +47,7 @@ export default function LiveRiskEngine({ trades }: { trades: Trade[] }) {
     const normalizedPrices = useMemo(() => {
         const normalized: Record<string, number> = {};
         Object.entries(prices).forEach(([key, value]) => {
-            normalized[normalizePriceKey(key)] = value;
+            normalized[normalizePriceKey(key)] = typeof value === "number" ? value : value.last;
         });
         return normalized;
     }, [prices]);
@@ -109,7 +109,7 @@ export default function LiveRiskEngine({ trades }: { trades: Trade[] }) {
 
             {totals.nearLimitCount > 0 && (
                 <div className="mb-4 p-3 bg-amber/10 border border-amber/20 rounded">
-                    <strong>{totals.nearLimitCount}</strong> trade(s) near their risk limit (>= 80%)
+                    <strong>{totals.nearLimitCount}</strong> trade(s) near their risk limit (&gt;= 80%)
                 </div>
             )}
 
