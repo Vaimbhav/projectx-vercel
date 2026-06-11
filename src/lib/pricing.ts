@@ -5,6 +5,12 @@ export type PriceRecord = {
     change: number | null;
     settle: number | null;
     updated_at: string;
+    // Extra fields present when fetched from /api/prices
+    symbol?: string | null;
+    product?: string | null;
+    anchor_month?: string | null;
+    expiry_date?: string | null;
+    instrument?: string | null;
 };
 
 export type LivePrices = Record<string, number | PriceRecord>;
@@ -142,7 +148,9 @@ export function getLivePriceForTrade(
     if (directPrice !== undefined) return directPrice;
 
     const parsed = parseInstrumentLabel(tradeInstrument);
-    if (parsed && parsed.product && parsed.anchorMonth) {
+    // Only fall back to outright lookup when there is no strategy suffix — if there
+    // is one (e.g. "1ms", "1MD") we must derive the price, not return the anchor leg.
+    if (parsed && parsed.product && parsed.anchorMonth && !parsed.strategyId) {
         const outrightPrice = getPriceFromMap(buildOutrightPriceKey(parsed.product, parsed.anchorMonth), prices);
         if (outrightPrice !== undefined) return outrightPrice;
     }
@@ -152,4 +160,21 @@ export function getLivePriceForTrade(
 
 export async function loadPricingStrategies() {
     return getAllStrategies();
+}
+
+/**
+ * Shared open-trade P&L calculation used by risk console, live risk engine, etc.
+ * Uses tick_size/tick_value so the result is in dollars.
+ */
+export function calcOpenPnl(
+    entryPrice: number,
+    markPrice: number,
+    direction: string,
+    tickSize: number,
+    tickValue: number,
+    sizeContracts: number,
+): number {
+    const dir = direction.toLowerCase() === "long" ? 1 : -1;
+    const ticks = ((markPrice - entryPrice) / tickSize) * dir;
+    return Math.round(ticks * tickValue * sizeContracts * 100) / 100;
 }
